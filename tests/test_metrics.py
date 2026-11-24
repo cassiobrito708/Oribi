@@ -342,6 +342,34 @@ def test_missing_entity_key_does_not_withhold_line_item_sum():
     assert _eval_sql(frame, total.sql) == 202.0
 
 
+def test_deduplicated_total_declares_grouping_column_dependencies():
+    frame = pd.DataFrame(
+        {
+            "order_id": [1, 1, 2, 2],
+            "revenue": [10.0, 10.0, 20.0, 20.0],
+            "quantity": [1, 2, 3, 4],
+        }
+    )
+    context = inspect(frame)
+    total_rev = _metric(context, "total_revenue")
+
+    assert total_rev.columns == ("revenue", "order_id")
+    assert "GROUP BY order_id" in total_rev.sql
+    projected = frame[list(total_rev.columns)]
+    assert _eval_sql(projected, total_rev.sql) == 30.0
+
+    payload = next(m for m in context.to_dict()["metrics"] if m["name"] == "total_revenue")
+    assert payload["columns"] == ["revenue", "order_id"]
+
+    # Control: a plain SUM total still advertises only its measure.
+    total_qty = _metric(context, "total_quantity")
+    assert total_qty.sql == "SUM(quantity)"
+    assert total_qty.columns == ("quantity",)
+    assert _eval_sql(frame[list(total_qty.columns)], total_qty.sql) == 10.0
+    qty_payload = next(m for m in context.to_dict()["metrics"] if m["name"] == "total_quantity")
+    assert qty_payload["columns"] == ["quantity"]
+
+
 def test_repeated_order_totals_across_line_items_deduplicate_aov_total_and_ratios():
     frame = pd.DataFrame(
         {

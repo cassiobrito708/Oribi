@@ -579,6 +579,7 @@ def _infer_measure_totals(
             includes_sum=True,
             has_duplicate_rows=has_duplicate_rows,
         )
+        columns: tuple[str, ...]
         if det_col is not None:
             alias = _cte_alias("per", det_col.name)
             det_sql = _sql_col(det_col.name)
@@ -594,10 +595,12 @@ def _infer_measure_totals(
             )
             evidence_list.append(_dedup_evidence(m_col, det_col, row_count))
             caveats = _merge_caveats(base_caveats, _dedup_caveat(m_col, det_col))
+            columns = (m_col.name, det_col.name)
         else:
             sql = f"SUM({_sql_col(m_col.name)})"
             rationale = f"Sums additive measure {m_col.name} across observed rows."
             caveats = base_caveats
+            columns = (m_col.name,)
         priority_tier = 1 if named_measure else 2
         results.append(
             (
@@ -607,7 +610,7 @@ def _infer_measure_totals(
                     label=label,
                     kind="measure_total",
                     sql=sql,
-                    columns=(m_col.name,),
+                    columns=columns,
                     confidence=confidence,
                     rationale=rationale,
                     evidence=tuple(evidence_list),
