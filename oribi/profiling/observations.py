@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from decimal import Decimal
+from numbers import Integral
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
@@ -27,6 +29,13 @@ class ColumnObservation:
     distinct_count_exact: bool = True
     fallback_counts: tuple[pd.Series, bool] | None = None
     is_decimal: bool = False
+
+
+def _has_decimal_and_integer_values(values: pd.Series) -> bool:
+    return all(
+        isinstance(value, Decimal) or (not isinstance(value, bool) and isinstance(value, Integral))
+        for value in values
+    ) and any(isinstance(value, Decimal) for value in values)
 
 
 class AnalysisSession:
@@ -92,12 +101,14 @@ class AnalysisSession:
         elif series.dtype == object or pd.api.types.is_string_dtype(series.dtype):
             values = series.dropna()
             kind = "empty" if values.empty else pd.api.types.infer_dtype(values, skipna=False)
-            is_decimal = kind == "decimal"
+            is_decimal = kind == "decimal" or (
+                kind == "mixed-integer" and _has_decimal_and_integer_values(values)
+            )
             if kind == "empty":
                 logical = "unknown"
             elif kind == "boolean":
                 logical = "boolean"
-            elif kind in {"integer", "floating", "mixed-integer-float", "decimal"}:
+            elif is_decimal or kind in {"integer", "floating", "mixed-integer-float"}:
                 logical = "numeric"
             elif kind == "string":
                 logical = "text"

@@ -56,6 +56,76 @@ def test_mixed_decimal_and_numeric_string_stays_non_numeric():
     assert column.statistics.missing_count == 1
 
 
+@pytest.mark.parametrize(
+    "middle",
+    [
+        pytest.param(0, id="zero-int"),
+        pytest.param(2, id="python-int"),
+        pytest.param(-2, id="negative-int"),
+        pytest.param(np.int64(2), id="numpy-int64"),
+    ],
+)
+def test_mixed_decimal_and_integer_values_match_decimal_control(middle):
+    frame = pd.DataFrame(
+        {"amount": pd.Series([Decimal("1.25"), middle, Decimal("3.75"), None], dtype=object)}
+    )
+    original = frame.copy()
+    control = pd.DataFrame(
+        {
+            "amount": pd.Series(
+                [Decimal("1.25"), Decimal(int(middle)), Decimal("3.75"), None],
+                dtype=object,
+            )
+        }
+    )
+
+    column = inspect(frame).get_column("amount")
+    expected = inspect(control).get_column("amount")
+    stats = column.statistics
+    expected_stats = expected.statistics
+
+    assert column.dtype == "object"
+    assert column.logical_type == expected.logical_type == "numeric"
+    assert column.semantic == expected.semantic
+    assert column.semantic.role == "measure"
+    assert column.recommendations == expected.recommendations
+    assert stats.missing_count == expected_stats.missing_count == 1
+    assert stats.distinct_count == expected_stats.distinct_count == 3
+    assert stats.zero_count == expected_stats.zero_count
+    assert stats.minimum == pytest.approx(expected_stats.minimum)
+    assert stats.maximum == pytest.approx(expected_stats.maximum)
+    assert stats.mean == pytest.approx(expected_stats.mean)
+    assert stats.median == pytest.approx(expected_stats.median)
+    assert stats.standard_deviation == pytest.approx(expected_stats.standard_deviation)
+    assert stats.quantiles == pytest.approx(expected_stats.quantiles)
+    assert any(type(sample) is type(middle) and sample == middle for sample, _ in stats.top_values)
+    pd.testing.assert_frame_equal(frame, original)
+    assert [type(value) for value in frame["amount"].iloc[:3]] == [Decimal, type(middle), Decimal]
+    assert frame["amount"].iloc[3] is None
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        pytest.param([Decimal("1.25"), True, None], id="decimal-bool"),
+        pytest.param([Decimal("1.25"), False, None], id="decimal-false"),
+        pytest.param([Decimal("1.25"), 2, True, None], id="decimal-int-bool"),
+        pytest.param([Decimal("1.25"), 2, np.bool_(False), None], id="decimal-int-numpy-bool"),
+        pytest.param([Decimal("1.25"), "2", None], id="decimal-string"),
+        pytest.param([Decimal("1.25"), 2, "3.75", None], id="decimal-int-string"),
+    ],
+)
+def test_mixed_decimal_with_strings_or_booleans_stays_non_numeric(values):
+    frame = pd.DataFrame({"amount": pd.Series(values, dtype=object)})
+    column = inspect(frame).get_column("amount")
+
+    assert column.dtype == "object"
+    assert column.logical_type == "unknown"
+    assert column.semantic.role != "measure"
+    assert column.statistics.mean is None
+    assert column.statistics.missing_count == 1
+
+
 def test_large_integer_bounds_keep_exact_precision():
     values = [2**53 + 1, 2**53 + 3]
     context = inspect(pd.DataFrame({"value": values}))
