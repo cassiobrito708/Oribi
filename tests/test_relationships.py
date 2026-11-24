@@ -21,11 +21,13 @@ def test_column_cardinality_reports_row_and_value_frequencies():
     assert (card.minimum_records_per_value, card.maximum_records_per_value) == (1, 3)
 
 
-def test_one_to_many_uses_observed_group_and_unique_entity_values():
+@pytest.mark.parametrize("index_name", [None, "customer_id", "order_id"])
+def test_one_to_many_uses_observed_group_and_unique_entity_values(index_name):
     frame = pd.DataFrame({
         "customer_id": [f"c{i // 4}" for i in range(100)],
         "order_id": [f"o{i}" for i in range(100)],
     })
+    frame.index.name = index_name
     context = inspect(frame)
     relation = next(
         rel for rel in context.relationships
@@ -140,6 +142,29 @@ def test_bijective_value_mapping_can_show_one_to_one_with_uncertainty():
     assert relation.semantic_confidence == relation.confidence
     assert relation.confidence_components["mapping_coverage"] == 1.0
     assert len([rel for rel in context.relationships if rel.kind == "one_to_one"]) == 1
+
+
+@pytest.mark.parametrize("index", [
+    pd.Index([10, 11, 12, 13], name="team"),
+    pd.Index([10, 10, 10, 10], name="code"),
+    pd.MultiIndex.from_tuples(
+        [(1, "a"), (1, "a"), (1, "b"), (1, "b")], names=["team", "team"]
+    ),
+], ids=["named", "duplicate-labels", "multiindex"])
+def test_relationships_ignore_colliding_index_names(index):
+    frame = pd.DataFrame(
+        {"team": ["a", "a", "b", "b"], "code": ["x", "x", "y", "y"]},
+        index=index,
+    )
+    original = frame.copy(deep=True)
+    control = inspect(frame.rename_axis([f"index_{i}" for i in range(index.nlevels)]))
+
+    context = inspect(frame)
+
+    assert context.profile.index.names == tuple(index.names)
+    assert context.relationships == control.relationships
+    assert any(relation.kind == "one_to_one" for relation in context.relationships)
+    pd.testing.assert_frame_equal(frame, original)
 
 
 def test_unhashable_metadata_does_not_displace_directional_mapping():

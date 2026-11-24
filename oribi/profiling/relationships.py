@@ -1,4 +1,4 @@
-"""Conservative within-frame column dependency detection."""
+"""Conservative column dependency detection, independent of DataFrame index names."""
 
 import math
 from collections.abc import Sequence
@@ -334,7 +334,7 @@ def detect_relationships(
                 pairs = frame[[source, target]].dropna().drop_duplicates()
             except (TypeError, ValueError):
                 continue
-            mapping_counts = pairs.groupby(source, dropna=True, observed=True, sort=False)[target].nunique()
+            mapping_counts = pairs.groupby(pairs[source], dropna=True, observed=True, sort=False)[target].nunique()
             unique_mapping = int(mapping_counts.eq(1).sum())
             coverage = unique_mapping / source_values
             affected_groups = int(mapping_counts.gt(1).sum())
@@ -445,11 +445,11 @@ def detect_relationships(
                 continue
             if pairs.empty:
                 continue
-            entity_group_counts = pairs.groupby(entity, dropna=True, observed=True, sort=False)[group].nunique()
+            entity_group_counts = pairs.groupby(pairs[entity], dropna=True, observed=True, sort=False)[group].nunique()
             coverage = float(entity_group_counts.eq(1).sum() / entity_count)
             if coverage < 1.0:
                 continue
-            per_group = pairs.groupby(group, dropna=True, observed=True, sort=False)[entity].nunique()
+            per_group = pairs.groupby(pairs[group], dropna=True, observed=True, sort=False)[entity].nunique()
             if per_group.empty or int(per_group.max()) <= 1:
                 continue
             group_reuse = max(0.0, (entity_count - group_count) / entity_count)
@@ -581,13 +581,15 @@ def detect_metric_grain_facts(
                 if paired.empty:
                     continue
                 group_sizes = paired.groupby(
-                    entity_col.name, dropna=True, observed=True, sort=False
+                    paired[entity_col.name], dropna=True, observed=True, sort=False
                 ).size()
                 if int(group_sizes.max()) < 2:
                     continue
+                distinct_pairs = paired.drop_duplicates()
                 distinct_per_entity = (
-                    paired.drop_duplicates()
-                    .groupby(entity_col.name, dropna=True, observed=True, sort=False)[measure_col.name]
+                    distinct_pairs.groupby(
+                        distinct_pairs[entity_col.name], dropna=True, observed=True, sort=False
+                    )[measure_col.name]
                     .nunique()
                 )
             except (TypeError, ValueError):
@@ -609,7 +611,7 @@ def detect_metric_grain_facts(
                 if id_pairs.empty:
                     continue
                 target_per_det = id_pairs.groupby(
-                    det_name, dropna=True, observed=True, sort=False
+                    id_pairs[det_name], dropna=True, observed=True, sort=False
                 )[target_col.name].nunique()
             except (TypeError, ValueError):
                 continue
@@ -632,7 +634,7 @@ def detect_metric_grain_facts(
             if paired.empty:
                 continue
             parents_per_child = paired.groupby(
-                child_name, dropna=True, observed=True, sort=False
+                paired[child_name], dropna=True, observed=True, sort=False
             )[parent_name].nunique()
         except (TypeError, ValueError):
             continue
