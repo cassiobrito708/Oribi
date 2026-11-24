@@ -657,6 +657,37 @@ def test_markdown_renders_empty_column_names_in_grain():
     assert "**(empty)** · candidate observation grain" in markdown
 
 
+def test_summary_reports_estimated_grain_for_empty_column_name():
+    context = inspect(pd.DataFrame({"": [1, 2, 3, 4]}))
+
+    assert context.grain is not None
+    assert context.grain.status == "estimated"
+    assert context.grain.columns == ("",)
+    assert context.get_column("").name == ""
+    assert context.to_dict()["grain"]["columns"] == [""]
+    assert f"Likely grain: (empty) (confidence {context.grain.confidence:.2f})." in context.summary()
+
+
+def test_summary_distinguishes_named_and_undetermined_grain():
+    named = inspect(pd.DataFrame({"row_id": [1, 2, 3, 4]}))
+    undetermined = inspect(pd.DataFrame({"region": ["east", "east", "west", "west"]}))
+
+    assert "Likely grain: row_id (confidence " in named.summary()
+    assert "Likely grain could not be determined confidently." in undetermined.summary()
+
+
+def test_summary_reports_undetermined_grain_when_estimated_label_is_missing():
+    context = inspect(pd.DataFrame({"row_id": [1, 2, 3, 4]}))
+    assert context.grain is not None
+    assert context.grain.status == "estimated"
+    assert context.grain.columns == ("row_id",)
+    context = replace(context, grain=replace(context.grain, label=None))
+
+    summary = context.summary()
+    assert "Likely grain could not be determined confidently." in summary
+    assert "Likely grain:" not in summary
+
+
 def test_markdown_renders_empty_column_names_in_relationships():
     frame = pd.DataFrame({
         "": ["A", "A", "B", "B"],
