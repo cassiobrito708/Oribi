@@ -70,14 +70,18 @@ class DatasetContext:
         return to_context(self, max_chars=max_chars, include_values=include_values)
 
     def summary(self) -> str:
-        """Summarize the profile, inferred grain, and up to three warnings."""
+        """Summarize the profile, inferred grain, and up to three warnings.
+
+        An estimated grain with an empty column name is shown as `(empty)`.
+        """
         rows = self.profile.row_count
         cols = self.profile.column_count
         parts = [f"Dataset: {rows:,} rows × {cols:,} columns."]
         if self.profile.duplicate_row_count:
             parts.append(f"{self.profile.duplicate_row_count:,} duplicate rows observed.")
-        if self.grain and self.grain.status == "estimated" and self.grain.label:
-            parts.append(f"Likely grain: {self.grain.label} (confidence {self.grain.confidence:.2f}).")
+        if self.grain and self.grain.status == "estimated" and self.grain.label is not None:
+            label = self.grain.label or "(empty)"
+            parts.append(f"Likely grain: {label} (confidence {self.grain.confidence:.2f}).")
         elif self.grain:
             parts.append("Likely grain could not be determined confidently.")
         if self.profile.exact_row_limit_exceeded:
