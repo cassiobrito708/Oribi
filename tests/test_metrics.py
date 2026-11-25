@@ -551,6 +551,25 @@ def test_sql_col_formatting_with_keywords_and_identifiers():
     assert _sql_col('col"quote') == '"col""quote"'
 
 
+def test_compact_context_preserves_newline_in_quoted_metric_identifier():
+    df = pd.DataFrame(
+        {
+            "order_id": [1, 2, 3],
+            "net\namount": [1.0, 2.0, 4.5],
+            "net amount": [10.0, 20.5, 31.0],
+        }
+    )
+    context = inspect(df)
+    metric = next(m for m in context.metrics if m.columns == ("net\namount",))
+
+    assert metric.sql == 'SUM("net\namount")'
+
+    compact = context.to_context(max_chars=5000)
+    rendered = f"- {metric.name} ({metric.confidence:.0%} confidence): {metric.sql}"
+    assert rendered in compact
+    assert rendered.replace("\n", " ") not in compact
+
+
 def _repeated_order_revenue_frame():
     return pd.DataFrame(
         {
@@ -584,3 +603,42 @@ def test_metric_caveats_stay_in_structured_output():
     total = next(m for m in payload["metrics"] if m["name"] == "total_revenue")
 
     assert any("coincidental" in caveat for caveat in total["caveats"])
+
+
+def test_compact_context_preserves_newline_in_quoted_metric_identifier_under_budget():
+    df = pd.DataFrame(
+        {
+            "order_id": [1, 2, 3],
+            "net\namount": [1.0, 2.0, 4.5],
+            "net amount": [10.0, 20.5, 31.0],
+        }
+    )
+    context = inspect(df)
+    metric = next(m for m in context.metrics if m.columns == ("net\namount",))
+
+    assert metric.sql == 'SUM("net\namount")'
+
+    # Orçamento apertado que ainda cabe a linha da métrica: identificador com \n preservado.
+    compact = context.to_context(max_chars=2000)
+    rendered = f"- {metric.name} ({metric.confidence:.0%} confidence): {metric.sql}"
+    assert rendered in compact
+    assert rendered.replace("\n", " ") not in compact
+    assert len(compact) <= 2000
+
+
+
+def test_compact_context_preserves_escaped_double_quote_in_metric_identifier():
+    df = pd.DataFrame(
+        {
+            "order_id": [1, 2, 3],
+            'col"quote': [1.0, 2.0, 3.0],
+        }
+    )
+    context = inspect(df)
+    metric = next(m for m in context.metrics if m.columns == ('col"quote',))
+    assert metric.sql == 'SUM("col""quote")'
+    compact = context.to_context(max_chars=5000)
+    rendered = f"- {metric.name} ({metric.confidence:.0%} confidence): {metric.sql}"
+    assert rendered in compact
+    assert 'SUM("col""quote")' in compact
+    assert len(compact) <= 5000
