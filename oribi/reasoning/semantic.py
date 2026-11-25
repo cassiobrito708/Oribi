@@ -55,7 +55,8 @@ def infer_semantic(
     negative_count = getattr(stats, "negative_count", 0) or 0
     std = getattr(stats, "standard_deviation", None)
     has_dispersion = std is not None and std > 0
-    words = column_name_words(name)
+    # A native datetime dtype establishes the role even when the name resembles an ID.
+    words = [] if logical_type == "temporal" else column_name_words(name)
     tokens = set(words)
     explicit_identifier_name = "id" in tokens or (len(words) >= 2 and words[-1] == "key")
     code_name = len(words) >= 2 and words[-1] == "code"

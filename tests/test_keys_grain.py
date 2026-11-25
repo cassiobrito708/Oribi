@@ -269,6 +269,22 @@ def test_independently_unique_native_timestamps_leave_grain_undetermined():
     assert inspect(frame.assign(region=list("abcdefghij"))).grain == forward.grain
 
 
+def test_datetime_id_name_does_not_establish_entity_grain():
+    frame = pd.DataFrame({
+        "settlement_id": pd.date_range("2025-01-01", periods=4),
+        "posted_at": pd.date_range("2025-02-01", periods=4),
+    })
+    context = inspect(frame)
+    assert [col.semantic.role for col in context.columns] == ["temporal", "temporal"]
+    assert not any(len(key.columns) == 1 and key.verified_unique for key in context.candidate_keys)
+    assert context.grain.status == "undetermined"
+    assert context.grain.evidence[0].code == "ambiguous_temporal_grain"
+
+    keyed = inspect(frame.assign(order_id=range(4)))
+    assert keyed.columns[-1].semantic.role == "identifier"
+    assert keyed.grain.columns == ("order_id",)
+
+
 def test_single_unique_native_timestamp_supports_grain():
     dates = pd.date_range("2025-01-01", periods=10, freq="D")
     grain = inspect(pd.DataFrame({"opened_at": dates})).grain
