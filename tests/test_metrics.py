@@ -372,6 +372,62 @@ def test_deduplicated_total_declares_grouping_column_dependencies():
     assert qty_payload["columns"] == ["quantity"]
 
 
+def test_average_order_value_excludes_rows_missing_entity_id():
+    frame = pd.DataFrame(
+        {
+            "order_id": [1, 2, None],
+            "revenue": [10.0, 20.0, 300.0],
+        }
+    )
+    context = inspect(frame)
+    aov = _metric(context, "average_order_value")
+    assert aov.sql == (
+        "SUM(CASE WHEN order_id IS NOT NULL THEN revenue END) "
+        "/ NULLIF(COUNT(DISTINCT order_id), 0)"
+    )
+    assert _eval_sql(frame, aov.sql) == 15.0
+    assert any(
+        "order_id" in caveat and "revenue" in caveat and "excluded" in caveat.lower()
+        for caveat in aov.caveats
+    ), aov.caveats
+
+    total = _metric(context, "total_revenue")
+    assert _eval_sql(frame, total.sql) == 330.0
+
+
+def test_integer_measure_with_null_entity_id_preserves_fractional_result():
+    frame = pd.DataFrame(
+        {
+            "order_id": pd.Series([1, 2, None], dtype="Int64"),
+            "revenue": pd.Series([10, 20, 300], dtype="int64"),
+        }
+    )
+    context = inspect(frame)
+    aov = _metric(context, "average_order_value")
+    assert aov.sql == (
+        "1.0 * SUM(CASE WHEN order_id IS NOT NULL THEN revenue END) "
+        "/ NULLIF(COUNT(DISTINCT order_id), 0)"
+    )
+    assert _eval_sql(frame, aov.sql) == 15.0
+
+
+def test_complete_entity_ids_preserve_existing_aov_sql():
+    frame = pd.DataFrame(
+        {
+            "order_id": [1, 2],
+            "revenue": [10.0, 20.0],
+        }
+    )
+    context = inspect(frame)
+    aov = _metric(context, "average_order_value")
+    assert aov.sql == "SUM(revenue) / NULLIF(COUNT(DISTINCT order_id), 0)"
+    assert _eval_sql(frame, aov.sql) == 15.0
+    assert not any(
+        "order_id" in caveat and "revenue" in caveat and "excluded" in caveat.lower()
+        for caveat in aov.caveats
+    )
+
+
 def test_repeated_order_totals_across_line_items_deduplicate_aov_total_and_ratios():
     frame = pd.DataFrame(
         {
