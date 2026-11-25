@@ -783,12 +783,35 @@ def _infer_measure_per_entity(
                     )
                 evidence.append(_dedup_evidence(m_col, det_col, row_count))
             else:
-                sql = f"{_sql_sum_numerator(m_col)} / NULLIF(COUNT(DISTINCT {_sql_col(id_col.name)}), 0)"
-                rationale = (
-                    f"Computes total {m_col.name} per distinct {id_col.name} "
-                    "using NULLIF to avoid division by zero."
-                )
-                caveats = base_caveats
+                id_sql = _sql_col(id_col.name)
+                m_sql = _sql_col(m_col.name)
+                if id_col.statistics.missing_count > 0:
+                    sum_expr = (
+                        f"SUM(CASE WHEN {id_sql} IS NOT NULL THEN {m_sql} END)"
+                        if _is_float_column(m_col)
+                        else f"1.0 * SUM(CASE WHEN {id_sql} IS NOT NULL THEN {m_sql} END)"
+                    )
+                    sql = f"{sum_expr} / NULLIF(COUNT(DISTINCT {id_sql}), 0)"
+                    rationale = (
+                        f"Computes total {m_col.name} per distinct {id_col.name}, "
+                        f"summing {m_col.name} only for rows where {id_col.name} is known "
+                        f"and excluding rows where {id_col.name} is NULL."
+                    )
+                    caveats = _merge_caveats(
+                        base_caveats,
+                        (
+                            f"Rows missing {id_col.name} are excluded from the {m_col.name} "
+                            f"numerator to avoid inflating the per-{stem} average "
+                            f"(even when the missing rate is below any general warning threshold)."
+                        ),
+                    )
+                else:
+                    sql = f"{_sql_sum_numerator(m_col)} / NULLIF(COUNT(DISTINCT {id_sql}), 0)"
+                    rationale = (
+                        f"Computes total {m_col.name} per distinct {id_col.name} "
+                        "using NULLIF to avoid division by zero."
+                    )
+                    caveats = base_caveats
 
             results.append(
                 (
