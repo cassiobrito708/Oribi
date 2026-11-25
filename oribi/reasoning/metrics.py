@@ -216,7 +216,7 @@ _Candidate = tuple[tuple[int, float, str], MetricDefinition]
 
 def _sql_col(name: str) -> str:
     """Format a column name safely as an ANSI SQL identifier."""
-    if _SQL_IDENTIFIER.match(name) and name.lower() not in _SQL_RESERVED_KEYWORDS:
+    if _SQL_IDENTIFIER.fullmatch(name) and name.lower() not in _SQL_RESERVED_KEYWORDS:
         return name
     escaped = name.replace('"', '""')
     return f'"{escaped}"'

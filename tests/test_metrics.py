@@ -615,6 +615,12 @@ def test_sql_col_formatting_with_keywords_and_identifiers():
     assert _sql_col('col"quote') == '"col""quote"'
 
 
+def test_metric_sql_preserves_a_trailing_newline_in_column_names():
+    name = "amount\n"
+    frame = pd.DataFrame({name: [1.5, 2.5], "amount": [10.0, 20.0]})
+    assert _eval_sql(frame, f"SUM({_sql_col(name)})") == 4.0
+
+
 def _repeated_order_revenue_frame():
     return pd.DataFrame(
         {
