@@ -81,11 +81,11 @@ class AnalysisSession:
             logical = "boolean"
         elif pd.api.types.is_datetime64_any_dtype(series.dtype):
             logical = "temporal"
+        elif getattr(series.dtype, "kind", None) == "m":
+            # pandas can also classify sparse timedeltas as numeric.
+            logical = "duration"
         elif pd.api.types.is_numeric_dtype(series.dtype):
             logical = "numeric"
-        elif getattr(series.dtype, "kind", None) == "m":
-            # Elapsed durations (timedelta64) are neither identifiers nor measures here.
-            logical = "duration"
         elif isinstance(series.dtype, (pd.CategoricalDtype, pd.IntervalDtype)):
             # Native interval bins are grouping labels without a dtype conversion.
             logical = "categorical"

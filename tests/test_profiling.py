@@ -611,6 +611,20 @@ def test_categorical_high_cardinality_warning_is_unchanged():
     assert "high_cardinality_text" not in codes
 
 
+def test_sparse_timedelta_profiles_like_dense_with_missing_values():
+    elapsed = pd.to_timedelta([1, None, 2, 1], unit="D")
+    sparse = pd.arrays.SparseArray(elapsed)
+    dense_column = inspect(pd.DataFrame({"elapsed": elapsed})).columns[0]
+    sparse_column = inspect(pd.DataFrame({"elapsed": sparse})).columns[0]
+
+    assert sparse_column.dtype == str(sparse.dtype)
+    assert sparse_column.logical_type == dense_column.logical_type == "duration"
+    assert sparse_column.semantic.role == dense_column.semantic.role == "unknown"
+    assert sparse_column.statistics.mean is None
+    assert sparse_column.statistics.missing_count == 1
+    assert sparse_column.statistics.top_values == dense_column.statistics.top_values
+
+
 def test_sparse_float_column_profiles_and_preserves_dtype():
     amount = pd.arrays.SparseArray([0.0, 1.0, 2.0, 3.0])
     sparse_column = inspect(pd.DataFrame({"amount": amount})).columns[0]
