@@ -170,6 +170,38 @@ def test_narrow_float_statistics_do_not_overflow(dtype, readings):
     assert narrow.quantiles == pytest.approx(wide.quantiles)
 
 
+@pytest.mark.parametrize(
+    "values,center",
+    [
+        pytest.param([9e307, 1e308], 9.5e307, id="positive-large"),
+        pytest.param([-1e308, -9e307], -9.5e307, id="negative-large"),
+        pytest.param([1.5, 2.5], 2.0, id="ordinary"),
+    ],
+)
+def test_large_finite_float_mean_and_median_stay_finite(values, center):
+    # Quantiles stay disabled so the median cannot borrow the 50th percentile.
+    column = inspect(
+        pd.DataFrame({"amount": values}),
+        options=ProfileOptions(include_quantiles=False),
+    ).get_column("amount")
+
+    assert column.statistics.mean == pytest.approx(center)
+    assert column.statistics.median == pytest.approx(center)
+    assert column.statistics.quantiles == {}
+
+
+def test_large_finite_float_statistics_exclude_missing_and_non_finite():
+    values = [9e307, 1e308, None, float("inf"), float("nan")]
+    column = inspect(
+        pd.DataFrame({"amount": values}),
+        options=ProfileOptions(include_quantiles=False),
+    ).get_column("amount")
+
+    assert column.statistics.mean == pytest.approx(9.5e307)
+    assert column.statistics.median == pytest.approx(9.5e307)
+    assert column.statistics.missing_count == 2
+
+
 @pytest.mark.parametrize("dtype,base", [("Int64", -(2**63)), ("UInt64", 2**63)])
 def test_nullable_integer_skew_with_large_adjacent_values(dtype, base):
     values = pd.Series([base + 1, base + 2, base + 3], dtype=dtype)
