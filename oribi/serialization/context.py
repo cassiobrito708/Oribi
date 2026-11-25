@@ -228,13 +228,66 @@ def _cardinality_lines(context: Any) -> list[_ContextLine]:
 _DEDUP_EVIDENCE_CODE = "measure_constant_per_entity"
 
 
+def _compact_metric_sql(sql: str) -> str:
+    """Collapse whitespace for one-line display without changing quoted SQL identifiers."""
+    out: list[str] = []
+    in_double = False
+    in_single = False
+    pending_space = False
+    i = 0
+    while i < len(sql):
+        ch = sql[i]
+        if in_double:
+            out.append(ch)
+            if ch == '"':
+                if i + 1 < len(sql) and sql[i + 1] == '"':
+                    out.append('"')
+                    i += 2
+                    continue
+                in_double = False
+            i += 1
+            continue
+        if in_single:
+            out.append(ch)
+            if ch == "'":
+                if i + 1 < len(sql) and sql[i + 1] == "'":
+                    out.append("'")
+                    i += 2
+                    continue
+                in_single = False
+            i += 1
+            continue
+        if ch == '"':
+            if pending_space and out:
+                out.append(" ")
+            pending_space = False
+            out.append(ch)
+            in_double = True
+        elif ch == "'":
+            if pending_space and out:
+                out.append(" ")
+            pending_space = False
+            out.append(ch)
+            in_single = True
+        elif ch.isspace():
+            if out:
+                pending_space = True
+        else:
+            if pending_space:
+                out.append(" ")
+                pending_space = False
+            out.append(ch)
+        i += 1
+    return "".join(out).strip()
+
+
 def _metric_lines(context: Any) -> list[_ContextLine]:
     metrics = getattr(context, "metrics", ())
     if not metrics:
         return []
     lines: list[_ContextLine] = ["METRICS"]
     for metric in metrics:
-        sql = " ".join(metric.sql.splitlines())
+        sql = _compact_metric_sql(metric.sql)
         line = f"- {metric.name} ({metric.confidence:.0%} confidence): {sql}"
         caveats = [" ".join(caveat.split()) for caveat in metric.caveats]
         # SQL that deduplicates rows is only safe to use together with the caveat
