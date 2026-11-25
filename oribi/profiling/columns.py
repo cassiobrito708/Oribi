@@ -159,12 +159,21 @@ def profile_column(
                 # Use the already-filtered finite values; Arrow-backed Series
                 # do not implement modulo.
                 has_fractional_values = bool(((sample.to_numpy() % 1) != 0).any())
+            minimum = finite.min() if len(finite) else None
+            maximum = finite.max() if len(finite) else None
+            dispersion_sample = sample
+            if minimum is not None and maximum is not None and pd.api.types.is_integer_dtype(sample.dtype):
+                if max(abs(int(minimum)), abs(int(maximum))) >= 2**53:
+                    # Translate in Python integers before float conversion to
+                    # preserve small differences and avoid fixed-width overflow.
+                    origin = int(minimum)
+                    dispersion_sample = sample.map(lambda value: float(int(value) - origin))
             values.update(
-                minimum=finite.min() if len(finite) else None,
-                maximum=finite.max() if len(finite) else None,
+                minimum=minimum,
+                maximum=maximum,
                 mean=finite_or_none(sample.mean()) if len(sample) else None,
                 median=finite_or_none(sample.median()) if len(sample) else None,
-                standard_deviation=finite_or_none(sample.std()) if len(sample) > 1 else None,
+                standard_deviation=finite_or_none(dispersion_sample.std()) if len(sample) > 1 else None,
             )
             values["zero_count"] = int((numeric == 0).sum())
             values["negative_count"] = int((numeric < 0).sum())

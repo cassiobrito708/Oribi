@@ -8,6 +8,18 @@ import pytest
 from oribi import ProfileOptions, inspect
 
 
+@pytest.mark.parametrize("dtype,base", [("Int64", 0), ("Int64", -(2**62)), ("UInt64", 2**63)])
+@pytest.mark.parametrize("step", [0, 1])
+def test_integer_dispersion_is_independent_of_offset(dtype, base, step):
+    amounts = pd.Series([base, None, base + step, base + 2 * step], dtype=dtype)
+    column = inspect(pd.DataFrame({"amount": amounts})).get_column("amount")
+    assert column.statistics.standard_deviation == pytest.approx(step)
+    assert int(column.statistics.minimum) == base
+    assert int(column.statistics.maximum) == base + 2 * step
+    if step:
+        assert "constant_numeric_values" not in {item.code for item in column.semantic.evidence}
+
+
 @pytest.mark.parametrize("repeat", [1, 2])
 def test_decimal_prices_have_numeric_statistics_and_measure_semantics(repeat):
     values = [Decimal("1.01"), Decimal("2.02"), Decimal("3.03")]
