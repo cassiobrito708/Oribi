@@ -288,12 +288,14 @@ def test_decimal_measure_ratio_avoids_integer_division():
 
 
 @pytest.mark.parametrize(("revenue", "profit"), [(100.0, None), (None, 40.0)])
-def test_metrics_withhold_sums_with_an_incomplete_determinant(revenue, profit):
+@pytest.mark.parametrize("index_name", [None, "order_id"])
+def test_metrics_withhold_sums_with_an_incomplete_determinant(revenue, profit, index_name):
     frame = pd.DataFrame({
         "order_id": pd.Series([1, 1, 2, 2, None], dtype="Int64"),
         "revenue": [20.0, 20.0, 30.0, 30.0, revenue],
         "profit": [2.0, 2.0, 9.0, 9.0, profit],
     })
+    frame.index.name = index_name
     context = inspect(frame)
     ambiguous = "revenue" if revenue is not None else "profit"
     covered = "profit" if ambiguous == "revenue" else "revenue"
@@ -380,6 +382,38 @@ def test_repeated_order_totals_across_line_items_deduplicate_aov_total_and_ratio
     assert _eval_sql(frame, opc.sql) == pytest.approx(1.5)
 
 
+@pytest.mark.parametrize("index_name", ["row", "order_id", "customer_id"])
+@pytest.mark.parametrize("multiindex", [False, True])
+def test_metric_grain_ignores_colliding_index_names(index_name, multiindex):
+    frame = pd.DataFrame({
+        "order_id": [1, 1, 2, 2, 3, 3],
+        "customer_id": ["a", "a", "a", "a", "b", "b"],
+        "revenue": [10.0, 10.0, 20.0, 20.0, 30.0, 30.0],
+    })
+    labels = [3, 1, 3, 1, 3, 1]
+    if multiindex:
+        frame.index = pd.MultiIndex.from_arrays(
+            [labels, ["batch"] * len(frame)], names=[index_name, index_name]
+        )
+    else:
+        frame.index = pd.Index(labels, name=index_name)
+    original = frame.copy(deep=True)
+    # Exercise metric-grain facts without the relationship scan providing them.
+    options = ProfileOptions(max_relationships=0)
+    control = inspect(
+        frame.rename_axis([f"index_{i}" for i in range(frame.index.nlevels)]), options=options
+    )
+
+    context = inspect(frame, options=options)
+
+    assert context.profile.index.names == tuple(frame.index.names)
+    assert context.metrics == control.metrics
+    assert _eval_sql(frame, _metric(context, "total_revenue").sql) == 60.0
+    assert _eval_sql(frame, _metric(context, "average_order_value").sql) == 20.0
+    assert _eval_sql(frame, _metric(context, "revenue_per_customer").sql) == 30.0
+    pd.testing.assert_frame_equal(frame, original)
+
+
 @pytest.mark.parametrize(
     "options", [ProfileOptions(max_relationship_columns=1), None], ids=["explicit", "default"],
 )
@@ -424,12 +458,14 @@ def test_repeated_integer_order_totals_and_coarser_customer_grain_measures():
     assert _eval_sql(frame, ltv_per_order.sql) == pytest.approx(75.0)
 
 
-def test_entity_ratio_with_multi_parent_child_uses_per_parent_deduplicated_sql():
+@pytest.mark.parametrize("index_name", [None, "order_id", "customer_id"])
+def test_entity_ratio_with_multi_parent_child_uses_per_parent_deduplicated_sql(index_name):
     # 60 orders across 10 customers (3 line items per order); order_id=0 belongs to both c0 and c1.
     customer_ids = [f"c{i % 10}" for i in range(60) for _ in range(3)]
     order_ids = [i for i in range(60) for _ in range(3)]
     customer_ids[2] = "c1"
     frame = pd.DataFrame({"customer_id": customer_ids, "order_id": order_ids})
+    frame.index.name = index_name
 
     context = inspect(frame)
     opc = _metric(context, "orders_per_customer")
