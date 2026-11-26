@@ -782,11 +782,6 @@ def _infer_measure_per_entity(
                         _dedup_caveat(m_col, det_col),
                         *(extra_caveats if id_col.statistics.missing_count > 0 else ()),
                     )
-                    rationale = (
-                        f"Deduplicates {m_col.name} to {det_col.name} grain before dividing "
-                        f"by distinct {id_col.name} entities."
-                    )
-                    caveats = _merge_caveats(base_caveats, _dedup_caveat(m_col, det_col))
                 else:
                     sql = (
                         f"WITH {alias} AS (SELECT {det_sql}, MAX({m_sql}) AS measure_value "
